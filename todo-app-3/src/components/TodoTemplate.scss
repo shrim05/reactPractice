@@ -1,0 +1,18 @@
+.TodoTemplate{
+    width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 3rem;
+    .title{
+        font-size: 1.25rem;
+        background: #01A9DB;
+        align-content: center;
+        color: white;
+        text-align: center;
+        padding: 1.2rem;
+    }
+    .content{
+        align-content: center;
+        align-items: center;
+    }
+}

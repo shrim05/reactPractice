@@ -1,0 +1,29 @@
+.TodoInsert{
+    display: flex;
+    background: black;
+    .inputForAdd{
+        font-size: 1.2rem;
+        flex: 1;
+        background: none;
+        outline: none;
+        border: none;
+        color: white;
+        line-height: 1.5;
+        & ::placeholder{
+            color:gray;
+        }
+    }
+    button{
+        background: none;
+        border: none;
+        outline: none;
+        color: white;
+        font-size: 1.2rem;
+        display: flex;
+        cursor: pointer;
+        background: darkgrey;
+        &:hover{
+            background: grey;
+        }
+    }
+}
