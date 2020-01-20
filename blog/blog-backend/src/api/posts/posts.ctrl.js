@@ -1,110 +1,165 @@
-let postId = 1;
+import Post from '../../models/post';
+import mongoose from 'mongoose';
+import Joi from 'joi';
 
-const posts = [
-    {
-        id: 1,
-        title: 'title',
-        body: 'body',
-    },
-];
+const {ObjectId} = mongoose.Types;
+
+export const checkObjectId = (ctx, next) => {
+    const {id} = ctx.params;
+    if(!ObjectId.isValid(id)){
+        ctx.status = 400; //bad request
+        return;
+    }
+    return next();
+};
 
 /*
 post write
 POST /api/posts {title, body}
 */
-exports.write = ctx => {
+export const write = async ctx => {
+    const schema = Joi.object().keys({
+        //객체가 다음 필드를 가지고 있음을 검증
+        title: Joi.string().required(),
+        body: Joi.string().required(),
+        tags: Joi.array().items(Joi.string()).required(),
+    });
+    //검증 실패 시 예외 처리
+     const result = Joi.validate(ctx.request.body, schema);
+     if(result.error){
+         ctx.status = 400;
+         ctx.body = result.error;
+         return;
+     }
     //REST API body location => ctx.request.body
-    const {title, body} = ctx.request.body;
-    postId += 1;
-    const post = {id: postId, title, body};
-    posts.push(post);
-    ctx.body = post;
+    const {title, body, tags} = ctx.request.body;
+    const post = new Post({
+        title,
+        body,
+        tags,
+    });
+    try {
+        await post.save();
+        ctx.body = post;
+    }catch(e){
+        ctx.throw(500,e);
+    }
 };
 
 /*
 post list inquiry
 GET /api/posts
 */
-exports.list = ctx => {
-    ctx.body = posts;
+export const list = async ctx => {
+    const page = parseInt(ctx.query.page || '1', 10);
+    if(page<1){
+        ctx.status = 400;
+        return;
+    }
+    try{
+        const posts = await Post.find()
+        .sort({_id:-1})
+        .limit(10)
+        .skip((page-1) * 10)
+        //.lean() -> json 형태로 데이터 조회
+        .exec();
+        const postCount = await Post.countDocuments().exec();
+        ctx.set('Last-Page', Math.ceil(postCount / 10));
+        ctx.body = posts
+            .map(post => post.toJSON())
+            .map(post => ({
+                ...post,
+                body: 
+                    post.body.length < 200 ? post.body : `${post.body.slice(0,200)}...`,
+            }));
+    }catch(e){
+        ctx.throw(500, e);
+    }
 };
 
 /*
 post specific post inquiry
 GET /api/posts/:id
 */
-exports.read = ctx => {
+export const read = async ctx => {
     const {id} = ctx.params;
     //파라미터 값은 문자열이므로 비교를 위해 파라미터를 숫자로 변경 or 비교할 값을 string으로 변환
-    const post = posts.find(p => p.id.toString()===id);
-    if(!post){
-        ctx.status = 404;
-        ctx.body = {
-            message : 'there is no such post',
-        };
-        return;
+    try{
+        const post = await Post.findById(id).exec();
+        if(!post){
+            ctx.status = 404;
+            return;
+        }
+        ctx.body = post;
+    }catch(e){
+        throw(500,e);
     }
-    ctx.body = post;
-}
+};
 
 /*
 post delete
 DELETE /api/posts/:id
 */
-exports.remove = ctx => {
+export const remove = async ctx => {
     const {id} = ctx.params;
-    const index = posts.findIndex(p=> p.id.toString()===id);
-    if(index === -1){
-        ctx.status =404;
-        ctx.body = {
-            message: 'there is no such post',
-        };
-        return;
+    try{
+        await Post.findByIdAndRemove(id).exec();
+        ctx.status = 204; // No content
+    }catch(e){
+        throw(500,e);
     }
-    posts.splice(index, 1);
-    ctx.status = 204; // No content
 };
 
 /*
 post replace
 PUT /api/posts/:id {title, body}
 */
-exports.replace = ctx => {
-    //PUT 메서드는 전체 포스트 정보를 입력하여 데이터를 통째로 교체할 때 사용
-    const {id} = ctx.params;
-    const index = posts.findIndex(p => p.id.toString()===id);
-    if(index === -1){
-        ctx.status = 404;
-        ctx.body = {
-            message: 'there is no such post',
-        };
-        return;
-    }
-    posts[index] =  {
-        id,
-        ...ctx.request.body,
-    };
-    ctx.body = posts[index];
-}
+// export const replace = ctx => {
+//     //PUT 메서드는 전체 포스트 정보를 입력하여 데이터를 통째로 교체할 때 사용
+//     const {id} = ctx.params;
+//     const index = posts.findIndex(p => p.id.toString()===id);
+//     if(index === -1){
+//         ctx.status = 404;
+//         ctx.body = {
+//             message: 'there is no such post',
+//         };
+//         return;
+//     }
+//     posts[index] =  {
+//         id,
+//         ...ctx.request.body,
+//     };
+//     ctx.body = posts[index];
+// }
 
 /*
 post update(specific field)
 PATCH  /api/posts/:id {title, body}
 */
-exports.update = ctx => {
+export const update = async ctx => {
     const {id} = ctx.params;
-    const index = posts.findIndex(p => p.id.toString()===id);
-    if(index === -1){
-        ctx.status = 404;
-        ctx.body = {
-            message: 'there is no such post',
-        };
-        return;
+    const schema = Joi.object().keys({
+        title: Joi.string(),
+        body: Joi.string(),
+    tags: Joi.array().items(Joi.string()),
+    });
+    const result = Joi.validate(ctx.request.body, schema);
+    if(result.error){
+        ctx.status = 400;
+        ctx.body = result.error;
+        return; 
     }
-    posts[index] = {
-        ...posts[index],
-        ...ctx.request.body,
-    };
-    ctx.body = posts[index];
+    try{
+        const post = await Post.findByIdAndUpdate(id, ctx.request.body, {
+            new: true,
+        }).exec();
+        if(!post){
+            ctx.status = 404;
+            return;
+        }
+        ctx.body = post;
+    }catch(e){
+        throw(500,e);
+    }
 };
 
