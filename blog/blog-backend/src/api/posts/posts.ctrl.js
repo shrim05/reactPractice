@@ -4,14 +4,33 @@ import Joi from 'joi';
 
 const {ObjectId} = mongoose.Types;
 
-export const checkObjectId = (ctx, next) => {
+export const getPostById = async (ctx, next) => {
     const {id} = ctx.params;
     if(!ObjectId.isValid(id)){
         ctx.status = 400; //bad request
         return;
     }
-    return next();
+    try{
+        const post = await Post.findById(id);
+        if(!post){
+            ctx.status = 404;
+            return;
+        }
+        ctx.state.post = post;
+        return next();
+    }catch(e){
+        ctx.throw(500, e);
+    }
 };
+
+export const checkOwnPost = (ctx, next) => {
+    const {user, post} = ctx.state;
+    if(post.user._id.toString() !== user._id){
+        ctx.status = 403;
+        return;
+    }
+    return next();
+}
 
 /*
 post write
@@ -37,6 +56,7 @@ export const write = async ctx => {
         title,
         body,
         tags,
+        user: ctx.state.user,
     });
     try {
         await post.save();
@@ -56,6 +76,12 @@ export const list = async ctx => {
         ctx.status = 400;
         return;
     }
+    const {tag, username} = ctx.query;
+    const query = {
+        ...(username ? {'user.username':username}:{}),
+        ...(tag ?{tags:tag}:{}),
+    };
+
     try{
         const posts = await Post.find()
         .sort({_id:-1})
@@ -82,18 +108,7 @@ post specific post inquiry
 GET /api/posts/:id
 */
 export const read = async ctx => {
-    const {id} = ctx.params;
-    //파라미터 값은 문자열이므로 비교를 위해 파라미터를 숫자로 변경 or 비교할 값을 string으로 변환
-    try{
-        const post = await Post.findById(id).exec();
-        if(!post){
-            ctx.status = 404;
-            return;
-        }
-        ctx.body = post;
-    }catch(e){
-        throw(500,e);
-    }
+  ctx.body = ctx.state.post;
 };
 
 /*
